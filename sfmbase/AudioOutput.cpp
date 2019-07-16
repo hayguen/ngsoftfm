@@ -23,9 +23,12 @@
 #include <cstdio>
 #include <cstring>
 #include <cerrno>
+#include <cassert>
 #include <algorithm>
 
+#ifdef USE_ALSA
 #include <alsa/asoundlib.h>
+#endif
 
 #include "SoftFM.h"
 #include "AudioOutput.h"
@@ -260,6 +263,8 @@ void WavAudioOutput::set_value(uint8_t * ptr, T value)
 
 /* ****************  class AlsaAudioOutput  **************** */
 
+#ifdef USE_ALSA
+
 // Construct ALSA output stream.
 AlsaAudioOutput::AlsaAudioOutput(const std::string& devname,
                                  unsigned int samplerate,
@@ -339,5 +344,7 @@ bool AlsaAudioOutput::write(const SampleVector& samples)
 
     return true;
 }
+
+#endif
 
 /* end */

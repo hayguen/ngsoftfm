@@ -34,13 +34,26 @@
 #include "SoftFM.h"
 #include "DataBuffer.h"
 #include "FmDecode.h"
-#include "AudioOutput.h"
 #include "MovingAverage.h"
+#include "AudioOutput.h"
 
+#include "Source.h"
+
+#ifdef USE_RTLSDR
 #include "RtlSdrSource.h"
+#endif
+
+#ifdef USE_HACKRF
 #include "HackRFSource.h"
+#endif
+
+#ifdef USE_AIRSPY
 #include "AirspySource.h"
+#endif
+
+#ifdef USE_BLADERF
 #include "BladeRFSource.h"
+#endif
 
 /** Flag is set on SIGINT / SIGTERM. */
 static std::atomic_bool stop_flag(false);
@@ -93,7 +106,10 @@ static void handle_sigterm(int sig)
     stop_flag.store(true);
 
     std::string msg = "\nGot signal ";
+#ifdef _WIN32
+#else
     msg += strsignal(sig);
+#endif
     msg += ", stopping ...\n";
 
     const char *s = msg.c_str();
@@ -110,10 +126,18 @@ void usage()
     fprintf(stderr,
     "Usage: softfm [options]\n"
             "  -t devtype     Device type:\n"
+#ifdef USE_RTLSDR
             "                   - rtlsdr: RTL-SDR devices\n"
+#endif
+#ifdef USE_HACKRF
             "                   - hackrf: HackRF One or Jawbreaker\n"
+#endif
+#ifdef USE_AIRSPY
             "                   - airspy: Airspy\n"
+#endif
+#ifdef USE_BLADERF
             "                   - bladerf: BladeRF\n"
+#endif
             "  -c config      Comma separated key=value configuration pairs or just key for switches\n"
             "                 See below for valid values per device type\n"
             "  -d devidx      Device index, 'list' to show device list (default 0)\n"
@@ -122,7 +146,9 @@ void usage()
             "  -R filename    Write audio data as raw S16_LE samples\n"
             "                 use filename '-' to write to stdout\n"
             "  -W filename    Write audio data to .WAV file\n"
+#ifdef USE_ALSA
             "  -P [device]    Play audio via ALSA device (default 'default')\n"
+#endif
             "  -T filename    Write pulse-per-second timestamps\n"
             "                 use filename '-' to write to stdout\n"
             "  -b seconds     Set audio buffer size in seconds\n"
@@ -137,9 +163,10 @@ void usage()
             "  blklen=<int>   Set audio buffer size in seconds (default RTL-SDR default)\n"
             "  agc            Enable RTL AGC mode (default disabled)\n"
             "\n"
+#ifdef USE_HACKRF
             "Configuration options for HackRF devices\n"
             "  freq=<int>     Frequency of radio station in Hz (default 100000000)\n"
-    		"                 valid values: 1M to 6G\n"
+            "                 valid values: 1M to 6G\n"
             "  srate=<int>    IF sample rate in Hz (default 5000000)\n"
             "                 (valid ranges: [2500000,20000000]))\n"
             "  lgain=<int>    LNA gain in dB. 'list' to just get a list of valid values: (default 16)\n"
@@ -148,11 +175,13 @@ void usage()
             "  extamp         Enable extra RF amplifier (default disabled)\n"
             "  antbias        Enable antemma bias (default disabled)\n"
             "\n"
+#endif
+#ifdef USE_AIRSPY
             "Configuration options for Airspy devices\n"
             "  freq=<int>     Frequency of radio station in Hz (default 100000000)\n"
-    		"                 valid values: 24M to 1.8G\n"
+            "                 valid values: 24M to 1.8G\n"
             "  srate=<int>    IF sample rate in Hz. Depends on Airspy firmware and libairspy support\n"
-    		"                 Airspy firmware and library must support dynamic sample rate query. (default 10000000)\n"
+            "                 Airspy firmware and library must support dynamic sample rate query. (default 10000000)\n"
             "  lgain=<int>    LNA gain in dB. 'list' to just get a list of valid values: (default 8)\n"
             "  mgain=<int>    Mixer gain in dB. 'list' to just get a list of valid values: (default 8)\n"
             "  vgain=<int>    VGA gain in dB. 'list' to just get a list of valid values: (default 8)\n"
@@ -160,16 +189,20 @@ void usage()
             "  lagc           Enable LNA AGC (default disabled)\n"
             "  magc           Enable mixer AGC (default disabled)\n"
             "\n"
+#endif
+#ifdef USE_BLADERF
             "Configuration options for BladeRF devices\n"
             "  freq=<int>     Frequency of radio station in Hz (default 300000000)\n"
-    		"                 valid values (with XB200): 100k to 3.8G\n"
-    		"                 valid values (without XB200): 300M to 3.8G\n"
+            "                 valid values (with XB200): 100k to 3.8G\n"
+            "                 valid values (without XB200): 300M to 3.8G\n"
             "  srate=<int>    IF sample rate in Hz. Valid values: 48k to 40M (default 1000000)\n"
             "  bw=<int>       Bandwidth in Hz. 'list' to just get a list of valid values: (default 1500000)\n"
             "  lgain=<int>    LNA gain in dB. 'list' to just get a list of valid values: (default 3)\n"
             "  v1gain=<int>   VGA1 gain in dB. 'list' to just get a list of valid values: (default 20)\n"
             "  v2gain=<int>   VGA2 gain in dB. 'list' to just get a list of valid values: (default 9)\n"
-            "\n");
+            "\n"
+#endif
+            );
 }
 
 
@@ -209,28 +242,54 @@ double get_time()
 
 static bool get_device(std::vector<std::string> &devnames, std::string& devtype, Source **srcsdr, int devidx)
 {
+  while (1)
+  {
+#ifdef USE_RTLSDR
     if (strcasecmp(devtype.c_str(), "rtlsdr") == 0)
     {
         RtlSdrSource::get_device_names(devnames);
+        break;
     }
-    else if (strcasecmp(devtype.c_str(), "hackrf") == 0)
+#endif
+#ifdef USE_HACKRF
+    if (strcasecmp(devtype.c_str(), "hackrf") == 0)
     {
         HackRFSource::get_device_names(devnames);
+        break;
     }
-    else if (strcasecmp(devtype.c_str(), "airspy") == 0)
+#endif
+#ifdef USE_AIRSPY
+    if (strcasecmp(devtype.c_str(), "airspy") == 0)
     {
         AirspySource::get_device_names(devnames);
+        break;
     }
-    else if (strcasecmp(devtype.c_str(), "bladerf") == 0)
+#endif
+#ifdef USE_BLADERF
+    if (strcasecmp(devtype.c_str(), "bladerf") == 0)
     {
         BladeRFSource::get_device_names(devnames);
+        break;
     }
-    else
-    {
-        fprintf(stderr, "ERROR: wrong device type (-t option) must be one of the following:\n");
-        fprintf(stderr, "       rtlsdr, hackrf, airspy, bladerf\n");
+#endif
+
+    fprintf(stderr, "ERROR: wrong device type (-t option) must be one of the following:\n");
+    fprintf(stderr, "       "
+    #ifdef USE_RTLSDR
+            "rtlsdr"
+    #endif
+    #ifdef USE_HACKRF
+            ", hackrf"
+    #endif
+    #ifdef USE_AIRSPY
+            ", airspy"
+    #endif
+    #ifdef USE_BLADERF
+            ", bladerf"
+    #endif
+            "\n");
         return false;
-    }
+  }
 
     if (devidx < 0 || (unsigned int)devidx >= devnames.size())
     {
@@ -251,26 +310,34 @@ static bool get_device(std::vector<std::string> &devnames, std::string& devtype,
 
     fprintf(stderr, "using device %d: %s\n", devidx, devnames[devidx].c_str());
 
+#ifdef USE_RTLSDR
     if (strcasecmp(devtype.c_str(), "rtlsdr") == 0)
     {
         // Open RTL-SDR device.
         *srcsdr = new RtlSdrSource(devidx);
     }
-    else if (strcasecmp(devtype.c_str(), "hackrf") == 0)
+#endif
+#ifdef USE_HACKRF
+    if (strcasecmp(devtype.c_str(), "hackrf") == 0)
     {
         // Open HackRF device.
         *srcsdr = new HackRFSource(devidx);
     }
-    else if (strcasecmp(devtype.c_str(), "airspy") == 0)
+#endif
+#ifdef USE_AIRSPY
+    if (strcasecmp(devtype.c_str(), "airspy") == 0)
     {
         // Open Airspy device.
         *srcsdr = new AirspySource(devidx);
     }
-    else if (strcasecmp(devtype.c_str(), "bladerf") == 0)
+#endif
+#ifdef USE_BLADERF
+    if (strcasecmp(devtype.c_str(), "bladerf") == 0)
     {
         // Open BladeRF device.
         *srcsdr = new BladeRFSource(devnames[devidx].c_str());
     }
+#endif
 
     return true;
 }
@@ -281,9 +348,14 @@ int main(int argc, char **argv)
     int     pcmrate = 48000;
     bool    stereo  = true;
     enum OutputMode { MODE_RAW, MODE_WAV, MODE_ALSA };
+#ifdef USE_ALSA
     OutputMode outmode = MODE_ALSA;
     std::string  filename;
     std::string  alsadev("default");
+#else
+    OutputMode outmode = MODE_RAW;
+    std::string  filename("-");
+#endif
     std::string  ppsfilename;
     FILE *  ppsfile = NULL;
     double  bufsecs = -1;
@@ -340,9 +412,11 @@ int main(int argc, char **argv)
                 filename = optarg;
                 break;
             case 'P':
+#ifdef USE_ALSA
                 outmode = MODE_ALSA;
                 if (optarg != NULL)
                     alsadev = optarg;
+#endif
                 break;
             case 'T':
                 ppsfilename = optarg;
@@ -367,6 +441,10 @@ int main(int argc, char **argv)
     }
 
     // Catch Ctrl-C and SIGTERM
+#ifdef _WIN32
+    signal( SIGINT, handle_sigterm );
+    signal( SIGTERM, handle_sigterm );
+#else
     struct sigaction sigact;
     sigact.sa_handler = handle_sigterm;
     sigemptyset(&sigact.sa_mask);
@@ -381,6 +459,7 @@ int main(int argc, char **argv)
     {
         fprintf(stderr, "WARNING: can not install SIGTERM handler (%s)\n", strerror(errno));
     }
+#endif
 
     // Open PPS file.
     if (!ppsfilename.empty())
@@ -439,8 +518,12 @@ int main(int argc, char **argv)
             audio_output.reset(new WavAudioOutput(filename, pcmrate, stereo));
             break;
         case MODE_ALSA:
+#ifdef USE_ALSA
             fprintf(stderr, "playing audio to ALSA device '%s'\n", alsadev.c_str());
             audio_output.reset(new AlsaAudioOutput(alsadev, pcmrate, stereo));
+#else
+        fprintf(stderr, "ALSA not available\n");
+#endif
             break;
     }
 

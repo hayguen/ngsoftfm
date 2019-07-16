@@ -3,38 +3,57 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(SoftFM)
 
+option( WITH_ALSA    "enable ALSA support?" ON )
+option( WITH_RTLSDR  "enable RTL-SDR  support?" ON )
+option( WITH_HACKRF  "enable HackRF  support?" OFF )
+option( WITH_AIRSPY  "enable AirSpy  support?" OFF )
+option( WITH_BLADERF "enable BladeRF support?" OFF )
+
 find_package(Threads)
 find_package(PkgConfig)
-find_package(ALSA REQUIRED)
+if ( WITH_ALSA )
+  find_package(ALSA REQUIRED)
+else()
+  set( ALSA_LIBRARIES "" )
+endif()
 find_package(Boost 1.47)
 
+if ( WITH_AIRSPY )
 # Find Airspy library.
 pkg_check_modules(PKG_AIRSPY libairspy)
 find_path(LIBAIRSPY_INCLUDE_DIR airspy.h
           HINT ${PKG_LIBAIRSPY_INCLUDE_DIRS})
 find_library(LIBAIRSPY_LIBRARIES libairspy.a
           HINT ${PKG_LIBAIRSPY_LIBRARIES_DIRS})
+endif()
 
+if ( WITH_BLADERF )
 # Find BladeRF library.
 pkg_check_modules(PKG_BLADERF libbladerf)
 find_path(LIBBLADERF_INCLUDE_DIR libbladeRF.h
           HINT ${PKG_LIBBLADERF_INCLUDE_DIR})
 find_library(LIBBLADERF_LIBRARIES libbladeRF.so
           HINT ${PKG_LIBBLADERF_LIBRARIES_DIRS})
+endif()
 
+if ( WITH_HACKRF )
 # Find HackRF library.
 pkg_check_modules(PKG_HACKRF libhackrf)
 find_path(LIBHACKRF_INCLUDE_DIR hackrf.h
           HINT ${PKG_LIBHACKRF_INCLUDE_DIRS})
 find_library(LIBHACKRF_LIBRARIES libhackrf.a
           HINT ${PKG_LIBHACKRF_LIBRARIES_DIRS})
+endif()
 
+if ( WITH_RTLSDR )
 # Find RTL-SDR library.
 pkg_check_modules(PKG_RTLSDR librtlsdr)
 find_path(LIBRTLSDR_INCLUDE_DIR rtl-sdr.h
           HINT ${PKG_LIBRTLSDR_INCLUDE_DIRS})
 find_library(LIBRTLSDR_LIBRARIES librtlsdr.a
           HINT ${PKG_LIBRTLSDR_LIBRARIES_DIRS})
+endif()
+
 
 # Find libusb
 pkg_check_modules(PKG_LIBUSB libusb-1.0)
@@ -47,38 +66,47 @@ find_library(LIBUSB_LIBRARY usb-1.0
 if(LIBRTLSDR_INCLUDE_DIR AND LIBRTLSDR_LIBRARIES)
     message(STATUS "Found librtlsdr: ${LIBRTLSDR_INCLUDE_DIR}, ${LIBRTLSDR_LIBRARIES}")
 else()
+  if ( WITH_RTLSDR )
     message(WARNING "Can not find Osmocom RTL-SDR library")
     message("Try again with environment variable PKG_CONFIG_PATH")
     message("or with -DLIBRTLSDR_INCLUDE_DIR=/path/rtlsdr/include")
     message("        -DLIBRTLSDR_LIBRARIES=/path/rtlsdr/lib/librtlsdr.so")
+  endif()
 endif()
 
 if(LIBAIRSPY_INCLUDE_DIR AND LIBAIRSPY_LIBRARIES)
     message(STATUS "Found libairspy: ${LIBAIRSPY_INCLUDE_DIR}, ${LIBAIRSPY_LIBRARIES}")
 else()
+  if ( WITH_AIRSPY )
     message(WARNING "Can not find libairspy library")
     message("Try again with environment variable PKG_CONFIG_PATH")
     message("or with -DLIBAIRSPY_INCLUDE_DIR=/path/libairspy/include")
     message("        -DLIBAIRSPY_LIBRARIES=/path/libairspy/lib/libairspy.so")
+  endif()
 endif()
 
 if(LIBBLADERF_INCLUDE_DIR AND LIBBLADERF_LIBRARIES)
     message(STATUS "Found libbladeRF: ${LIBBLADERF_INCLUDE_DIR}, ${LIBBLADERF_LIBRARIES}")
 else()
+  if ( WITH_BLADERF )
     message(WARNING "Can not find libbladeRF library")
     message("Try again with environment variable PKG_CONFIG_PATH")
     message("or with -DLIBBLADERF_INCLUDE_DIR=/path/libbladeRF/include")
     message("        -DLIBBLADERF_LIBRARIES=/path/libbladeRF/lib/libbladeRF.so")
+  endif()
 endif()
 
 if(LIBHACKRF_INCLUDE_DIR AND LIBHACKRF_LIBRARIES)
     message(STATUS "Found libhackrf: ${LIBHACKRF_INCLUDE_DIR}, ${LIBHACKRF_LIBRARIES}")
 else()
+  if ( WITH_HACKRF )
     message(WARNING "Can not find libhackrf library")
     message("Try again with environment variable PKG_CONFIG_PATH")
     message("or with -DLIBHACKRF_INCLUDE_DIR=/path/libhackrf/include")
     message("        -DLIBHACKRF_LIBRARIES=/path/libhackrf/lib/libbladeRF.so")
+  endif()
 endif()
+
 
 set(LIBAIRSPY_INCLUDE_DIRS ${LIBAIRSPY_INCLUDE_DIR} ${LIBUSB_INCLUDE_DIR})
 set(LIBAIRSPY_LIBRARIES    ${LIBAIRSPY_LIBRARIES} ${LIBUSB_LIBRARY})
@@ -181,31 +209,55 @@ set(sfmbladerf_SOURCES
     ${sfmbladerf_HEADERS}
 )
 
-# Libraries
-
-add_library(sfmbase STATIC
-    ${sfmbase_SOURCES}
-)
-
-add_library(sfmrtlsdr STATIC
-    ${sfmrtlsdr_SOURCES}
-)
-
-add_library(sfmhackrf STATIC
-    ${sfmhackrf_SOURCES}
-)
-
-add_library(sfmairspy STATIC
-    ${sfmairspy_SOURCES}
-)
-
-add_library(sfmbladerf STATIC
-    ${sfmbladerf_SOURCES}
-)
 
 add_executable(softfm
 	main.cpp
 )
+
+# Libraries
+
+add_library(sfmbase STATIC  ${sfmbase_SOURCES} )
+
+set( SFM_RCV_LIBS "" )
+
+if ( WITH_RTLSDR )
+  add_library(sfmrtlsdr STATIC  ${sfmrtlsdr_SOURCES} )
+  set( SFM_RCV_LIBS ${SFM_RCV_LIBS} sfmrtlsdr )
+  target_compile_definitions( softfm  PUBLIC USE_RTLSDR )
+  target_include_directories(sfmrtlsdr PUBLIC  ${LIBRTLSDR_INCLUDE_DIRS} )
+  target_link_libraries(sfmrtlsdr  ${LIBRTLSDR_LIBRARIES} )
+endif()
+
+if ( WITH_HACKRF )
+  add_library(sfmhackrf STATIC  ${sfmhackrf_SOURCES} )
+  set( SFM_RCV_LIBS ${SFM_RCV_LIBS} sfmhackrf )
+  target_compile_definitions( softfm  PUBLIC USE_HACKRF )
+  target_include_directories(sfmhackrf PUBLIC  ${LIBHACKRF_INCLUDE_DIRS} )
+  target_link_libraries(sfmhackrf  ${LIBHACKRF_LIBRARIES} )
+endif()
+
+if ( WITH_AIRSPY )
+  add_library(sfmairspy STATIC  ${sfmairspy_SOURCES} )
+  set( SFM_RCV_LIBS ${SFM_RCV_LIBS} sfmairspy )
+  target_compile_definitions( softfm  PUBLIC USE_AIRSPY )
+  target_include_directories(sfmairspy PUBLIC  ${LIBAIRSPY_INCLUDE_DIRS} )
+  target_link_libraries(sfmairspy  ${LIBAIRSPY_LIBRARIES} )
+endif()
+
+if ( WITH_BLADERF )
+  add_library(sfmbladerf STATIC  ${sfmbladerf_SOURCES} )
+  set( SFM_RCV_LIBS ${SFM_RCV_LIBS} sfmbladerf )
+  target_compile_definitions( softfm  PUBLIC USE_BLADERF )
+  target_include_directories(sfmbladerf PUBLIC  ${LIBBLADERF_INCLUDE_DIRS} )
+  target_link_libraries(sfmbladerf  ${LIBBLADERF_LIBRARIES} )
+endif()
+
+
+if ( WITH_ALSA )
+  target_compile_definitions( sfmbase PUBLIC USE_ALSA )
+  target_compile_definitions( softfm  PUBLIC USE_ALSA )
+endif()
+
 
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
@@ -215,46 +267,11 @@ include_directories(
 
 target_link_libraries(softfm
     sfmbase
-    sfmrtlsdr
-    sfmhackrf
-    sfmairspy
-    sfmbladerf
+    ${SFM_RCV_LIBS}
     ${CMAKE_THREAD_LIBS_INIT}
     ${ALSA_LIBRARIES}
     ${EXTRA_LIBS} 
 )
 
-target_include_directories(sfmrtlsdr PUBLIC
-    ${LIBRTLSDR_INCLUDE_DIRS}
-)
-
-target_include_directories(sfmhackrf PUBLIC
-    ${LIBHACKRF_INCLUDE_DIRS}
-)
-
-target_include_directories(sfmairspy PUBLIC
-    ${LIBAIRSPY_INCLUDE_DIRS}
-)
-
-target_include_directories(sfmbladerf PUBLIC
-    ${LIBBLADERF_INCLUDE_DIRS}
-)
-
-target_link_libraries(sfmrtlsdr
-    ${LIBRTLSDR_LIBRARIES}
-)
-
-target_link_libraries(sfmhackrf
-    ${LIBHACKRF_LIBRARIES}
-)
-
-target_link_libraries(sfmairspy
-    ${LIBAIRSPY_LIBRARIES}
-)
-
-target_link_libraries(sfmbladerf
-    ${LIBBLADERF_LIBRARIES}
-)
-
 install(TARGETS softfm DESTINATION bin)
-install(TARGETS sfmbase sfmrtlsdr sfmhackrf sfmairspy sfmbladerf DESTINATION lib)
+install(TARGETS sfmbase ${SFM_RCV_LIBS}  DESTINATION lib)

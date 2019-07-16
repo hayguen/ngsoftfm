@@ -59,7 +59,9 @@ Branches:
 
 <h2>RTL-SDR support</h2>
 
-The Osmocom RTL-SDR library must be installed before you can build NGSoftFM.
+The Osmocom RTL-SDR library should be installed before you can build NGSoftFM supporting RTL-SDR.
+See cmake option WITH_RTLSDR at section INSTALLING.
+
 See http://sdr.osmocom.org/trac/wiki/rtl-sdr for more information.
 NGSoftFM has been tested successfully with RTL-SDR 0.5.3. Normally your distribution should provide the appropriate librtlsdr package.
 If you go with your own installation of librtlsdr you have to specify the include path and library path. For example if you installed it in `-DLIBRTLSDR_LIBRARIES=/opt/install/librtlsdr/lib/librtlsdr.so -DLIBRTLSDR_INCLUDE_DIR=/opt/install/librtlsdr/include` to the cmake options
@@ -70,7 +72,7 @@ To install the library from a Debian/Ubuntu installation just do:
   
 <h2>HackRF support</h2>
 
-For now HackRF support must be installed even if no HackRF device is connected.
+HackRF support must be installed even if no HackRF device is connected - if cmake option WITH_HACKRF is switched ON.
 
 If you install from source (https://github.com/mossmann/hackrf/tree/master/host/libhackrf) in your own installation path you have to specify the include path and library path. For example if you installed it in `/opt/install/libhackrf` you have to add `-DLIBHACKRF_LIBRARIES=/opt/install/libhackrf/lib/libhackrf.so -DLIBHACKRF_INCLUDE_DIR=/opt/install/libhackrf/include` to the cmake options.
 
@@ -80,7 +82,8 @@ To install the library from a Debian/Ubuntu installation just do:
   
 <h2>Airspy support</h2>
 
-For now Airspy support must be installed even if no Airspy device is connected.
+Airspy support must be installed even if no Airspy device is connected - if cmake option WITH_AIRSPY is switched ON.
+
 
 If you install from source (https://github.com/airspy/host/tree/master/libairspy) in your own installation path you have to specify the include path and library path. For example if you installed it in `/opt/install/libairspy` you have to add `-DLIBAIRSPY_LIBRARIES=/opt/install/libairspy/lib/libairspy.so -DLIBAIRSPY_INCLUDE_DIR=/opt/install/libairspy/include` to the cmake options.
 
@@ -90,7 +93,8 @@ To install the library from a Debian/Ubuntu installation just do:
   
 <h2>BladeRF support</h2>
 
-For now BladeRF support must be installed even if no Airspy device is connected.
+BladeRF support must be installed even if no Airspy device is connected - if cmake option WITH_BLADERF is switched ON.
+
 
 If you install from source (https://github.com/Nuand/bladeRF) in your own installation path you have to specify the include path and library path. For example if you installed it in `/opt/install/libbladerf` you have to add `-DLIBBLADERF_LIBRARIES=/opt/install/libbladeRF/lib/libbladeRF.so -DLIBBLADERF_INCLUDE_DIR=/opt/install/libbladeRF/include` to the cmake options.
 
@@ -108,6 +112,10 @@ top level directory. Then do like this:
  - `mkdir build`
  - `cd build`
  - `cmake ..`
+
+with options:
+
+ - `cmake .. -DWITH_RTLSDR=ON -DWITH_HACKRF=ON -DWITH_AIRSPY=ON -DWITH_BLADERF=OFF`
 
 Compile and install
 

@@ -131,6 +131,8 @@ private:
 };
 
 
+#ifdef USE_ALSA
+
 /** Write audio data to ALSA device. */
 class AlsaAudioOutput : public AudioOutput
 {
@@ -155,5 +157,7 @@ private:
     struct _snd_pcm *    m_pcm;
     std::vector<std::uint8_t> m_bytebuf;
 };
+
+#endif
 
 #endif
