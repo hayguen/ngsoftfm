@@ -10,7 +10,7 @@ decoding is supported. It is written in C++. It is a derivative work of SoftFM (
 
 Hardware supported:
 
-  - **RTL-SDR** based (RTL2832-based) hardware is suppoeted and uses the _librtlsdr_ library to interface with the RTL-SDR hardware.
+  - **RTL-SDR** based (RTL2832-based) hardware is supported and uses the _librtlsdr_ library to interface with the RTL-SDR hardware.
   - **HackRF** One and variants are supported with _libhackrf_ library.
   - **Airspy** is supported with _libairspy_ library.
   - **BladeRF** is supported with _libbladerf_ library.
@@ -129,7 +129,7 @@ Compile and install
 
 Basic usage:
 
- - `./softfm -t rrtlsdr -c freq=94600000` Tunes to 94.6 MHz
+ - `./softfm -t rtlsdr -c freq=94600000` Tunes to 94.6 MHz
 
 Specify gain:
 
