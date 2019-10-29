@@ -98,6 +98,13 @@ public:
             m_cond.wait(lock);
     }
 
+    /** Wait until the buffer has less than minfill samples */
+    bool is_buffer_empty(std::size_t minfill)
+    {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        return (m_qlen < minfill);
+    }
+
 private:
     std::size_t              m_qlen;
     bool                     m_end_marked;

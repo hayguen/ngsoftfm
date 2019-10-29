@@ -76,7 +76,8 @@ namespace parsekv
             query =  pair >> *((qi::lit(',') | '&') >> pair);
             pair  =  key >> -('=' >> value);
             key   =  qi::char_("a-zA-Z_") >> *qi::char_("a-zA-Z_0-9");
-            value = +qi::char_("a-zA-Z_0-9.");
+            // allow some more characters in filename/strings
+            value = +qi::char_("a-zA-Z_0-9.:/\\");
         }
 
         qi::rule<Iterator, pairs_type()> query;

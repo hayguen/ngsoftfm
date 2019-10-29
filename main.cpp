@@ -39,6 +39,10 @@
 
 #include "Source.h"
 
+#ifdef USE_WAVEFILE
+#include "WaveFileSource.h"
+#endif
+
 #ifdef USE_RTLSDR
 #include "RtlSdrSource.h"
 #endif
@@ -126,14 +130,17 @@ void usage()
     fprintf(stderr,
     "Usage: softfm [options]\n"
             "  -t devtype     Device type:\n"
+#ifdef USE_WAVEFILE
+            "                   - wave:    pseudo device for Wave files\n"
+#endif
 #ifdef USE_RTLSDR
-            "                   - rtlsdr: RTL-SDR devices\n"
+            "                   - rtlsdr:  RTL-SDR devices\n"
 #endif
 #ifdef USE_HACKRF
-            "                   - hackrf: HackRF One or Jawbreaker\n"
+            "                   - hackrf:  HackRF One or Jawbreaker\n"
 #endif
 #ifdef USE_AIRSPY
-            "                   - airspy: Airspy\n"
+            "                   - airspy:  Airspy\n"
 #endif
 #ifdef USE_BLADERF
             "                   - bladerf: BladeRF\n"
@@ -153,9 +160,16 @@ void usage()
             "                 use filename '-' to write to stdout\n"
             "  -b seconds     Set audio buffer size in seconds\n"
             "\n"
+#ifdef USE_WAVEFILE
+            "Configuration options for WAVE file input 'device'\n"
+            "  file=<str>     Filename of input\n"
+            "  freq=<int>     Frequency of radio station in Hz\n"
+            "\n"
+#endif
+#ifdef USE_RTLSDR
             "Configuration options for RTL-SDR devices\n"
             "  freq=<int>     Frequency of radio station in Hz (default 100000000)\n"
-    		"                 valid values: 10M to 2.2G (working range depends on device)\n"
+            "                 valid values: 10M to 2.2G (working range depends on device)\n"
             "  srate=<int>    IF sample rate in Hz (default 1000000)\n"
             "                 (valid ranges: [225001, 300000], [900001, 3200000]))\n"
             "  gain=<float>   Set LNA gain in dB, or 'auto',\n"
@@ -163,6 +177,7 @@ void usage()
             "  blklen=<int>   Set audio buffer size in seconds (default RTL-SDR default)\n"
             "  agc            Enable RTL AGC mode (default disabled)\n"
             "\n"
+#endif
 #ifdef USE_HACKRF
             "Configuration options for HackRF devices\n"
             "  freq=<int>     Frequency of radio station in Hz (default 100000000)\n"
@@ -244,6 +259,13 @@ static bool get_device(std::vector<std::string> &devnames, std::string& devtype,
 {
   while (1)
   {
+#ifdef USE_WAVEFILE
+    if (strcasecmp(devtype.c_str(), "wave") == 0)
+    {
+        WaveFileSource::get_device_names(devnames);
+        break;
+    }
+#endif
 #ifdef USE_RTLSDR
     if (strcasecmp(devtype.c_str(), "rtlsdr") == 0)
     {
@@ -275,8 +297,11 @@ static bool get_device(std::vector<std::string> &devnames, std::string& devtype,
 
     fprintf(stderr, "ERROR: wrong device type (-t option) must be one of the following:\n");
     fprintf(stderr, "       "
+    #ifdef USE_WAVEFILE
+            "wave"
+    #endif
     #ifdef USE_RTLSDR
-            "rtlsdr"
+            ", rtlsdr"
     #endif
     #ifdef USE_HACKRF
             ", hackrf"
@@ -291,6 +316,8 @@ static bool get_device(std::vector<std::string> &devnames, std::string& devtype,
         return false;
   }
 
+  if (strcasecmp(devtype.c_str(), "wave") != 0)
+  {
     if (devidx < 0 || (unsigned int)devidx >= devnames.size())
     {
         if (devidx != -1)
@@ -309,7 +336,15 @@ static bool get_device(std::vector<std::string> &devnames, std::string& devtype,
     }
 
     fprintf(stderr, "using device %d: %s\n", devidx, devnames[devidx].c_str());
+  }
 
+#ifdef USE_WAVEFILE
+    if (strcasecmp(devtype.c_str(), "wave") == 0)
+    {
+        // Open Wave pseudo device.
+        *srcsdr = new WaveFileSource();
+    }
+#endif
 #ifdef USE_RTLSDR
     if (strcasecmp(devtype.c_str(), "rtlsdr") == 0)
     {
@@ -622,7 +657,7 @@ int main(int argc, char **argv)
     SampleVector audiosamples;
     bool inbuf_length_warning = false;
     double audio_level = 0;
-    bool got_stereo = false;
+    int got_stereo = -1;
 
     double block_time = get_time();
 
@@ -682,9 +717,10 @@ int main(int argc, char **argv)
         fflush(stderr);
 
         // Show stereo status.
-        if (fm.stereo_detected() != got_stereo)
+        const int new_stereo = fm.stereo_detected() ? 1 : 0;
+        if ( new_stereo != got_stereo)
         {
-            got_stereo = fm.stereo_detected();
+            got_stereo = new_stereo;
 
             if (got_stereo)
             {
@@ -692,7 +728,7 @@ int main(int argc, char **argv)
             }
             else
             {
-                fprintf(stderr, "\nlost stereo signal\n");
+                fprintf(stderr, "\nno/lost stereo signal\n");
             }
         }
 

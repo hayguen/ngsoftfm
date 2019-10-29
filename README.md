@@ -104,6 +104,12 @@ To install the library from a Debian/Ubuntu installation just do:
   
 Note: for the BladeRF to work effectively on FM broadcast frequencies you have to fit it with the XB200 extension board.
   
+<h2>WAVE file support</h2>
+
+By default activated with cmake option WITH_WAVEFILE=ON.
+For now only WAVE files with auxi Chunk are supported. These are generated from RTL_SDR, SpectraVue, HDSDR, RFspace, ELAD FDM, ..
+
+
 <h1>Installing</h1>
 
 To install NGSoftFM, download and unpack the source code and go to the
@@ -115,7 +121,7 @@ top level directory. Then do like this:
 
 with options:
 
- - `cmake .. -DWITH_RTLSDR=ON -DWITH_HACKRF=ON -DWITH_AIRSPY=ON -DWITH_BLADERF=OFF`
+ - `cmake .. -DWITH_WAVEFILE=ON -DWITH_RTLSDR=ON -DWITH_HACKRF=ON -DWITH_AIRSPY=ON -DWITH_BLADERF=OFF`
 
 Compile and install
 

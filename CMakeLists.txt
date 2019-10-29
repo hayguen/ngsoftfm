@@ -4,6 +4,7 @@ cmake_minimum_required(VERSION 3.0.2)
 project(SoftFM)
 
 option( WITH_ALSA    "enable ALSA support?" ON )
+option( WITH_WAVEFILE "enable Wave File support?" ON )
 option( WITH_RTLSDR  "enable RTL-SDR  support?" ON )
 option( WITH_HACKRF  "enable HackRF  support?" OFF )
 option( WITH_AIRSPY  "enable AirSpy  support?" OFF )
@@ -149,6 +150,25 @@ set(sfmbase_SOURCES
     ${sfmbase_HEADERS}
 )
 
+# Wave file as source
+
+set(sfmwave_SOURCES
+    sfmbase/WaveFileSource.cpp
+    sfmbase/waveread.c
+)
+
+set(sfmwave_HEADERS
+    include/WaveFileSource.h
+    include/waveread.h
+    include/wavehdr.h
+)
+
+set(sfmwave_SOURCES
+    ${sfmwave_SOURCES}
+    ${sfmwave_HEADERS}
+)
+
+
 # RTL-SDR sources
 
 set(sfmrtlsdr_SOURCES
@@ -219,6 +239,12 @@ add_executable(softfm
 add_library(sfmbase STATIC  ${sfmbase_SOURCES} )
 
 set( SFM_RCV_LIBS "" )
+
+if ( WITH_WAVEFILE )
+  add_library(sfmwave STATIC  ${sfmwave_SOURCES} )
+  set( SFM_RCV_LIBS ${SFM_RCV_LIBS} sfmwave )
+  target_compile_definitions( softfm  PUBLIC USE_WAVEFILE )
+endif()
 
 if ( WITH_RTLSDR )
   add_library(sfmrtlsdr STATIC  ${sfmrtlsdr_SOURCES} )
