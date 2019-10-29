@@ -37,7 +37,7 @@ public:
      * max_freq_dev :: Full scale frequency deviation relative to the
      *                 full sample frequency.
      */
-    PhaseDiscriminator(double max_freq_dev);
+    PhaseDiscriminator(double max_freq_dev, double freqscale=1.0);
 
     /**
      * Process samples.
@@ -159,7 +159,8 @@ public:
               double bandwidth_if=default_bandwidth_if,
               double freq_dev=default_freq_dev,
               double bandwidth_pcm=default_bandwidth_pcm,
-              unsigned int downsample=1);
+              unsigned int downsample=1,
+              double freqscale=1.0);
 
     /**
      * Process IQ samples and return audio samples.

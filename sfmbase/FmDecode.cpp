@@ -72,8 +72,8 @@ static IQSample::value_type rms_level_approx(const IQSampleVector& samples)
 /* ****************  class PhaseDiscriminator  **************** */
 
 // Construct phase discriminator.
-PhaseDiscriminator::PhaseDiscriminator(double max_freq_dev)
-    : m_freq_scale_factor(1.0 / (max_freq_dev * 2.0 * M_PI))
+PhaseDiscriminator::PhaseDiscriminator(double max_freq_dev, double freqscale)
+    : m_freq_scale_factor(freqscale / (max_freq_dev * 2.0 * M_PI))
 { }
 
 
@@ -279,7 +279,8 @@ FmDecoder::FmDecoder(double sample_rate_if,
                      double bandwidth_if,
                      double freq_dev,
                      double bandwidth_pcm,
-                     unsigned int downsample)
+                     unsigned int downsample,
+                     double freqscale)
 
     // Initialize member fields
     : m_sample_rate_if(sample_rate_if)
@@ -301,7 +302,7 @@ FmDecoder::FmDecoder(double sample_rate_if,
     , m_iffilter(10, bandwidth_if / sample_rate_if)
 
     // Construct PhaseDiscriminator
-    , m_phasedisc(freq_dev / sample_rate_if)
+    , m_phasedisc(freq_dev / sample_rate_if, freqscale)
 
     // Construct DownsampleFilter for baseband
     , m_resample_baseband(8 * downsample, 0.4 / downsample, downsample, true)

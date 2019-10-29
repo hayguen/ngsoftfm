@@ -150,6 +150,11 @@ void usage()
             "  -d devidx      Device index, 'list' to show device list (default 0)\n"
             "  -r pcmrate     Audio sample rate in Hz (default 48000 Hz)\n"
             "  -M             Disable stereo decoding\n"
+            "  -e us          de-emphasis in us (default: 50 us)\n"
+            "  -B bandwidth   bandwidth in Hz (default: 200 kHz)\n"
+            "  -D deviation   frequency-deviation in Hz (default: 75 kHz)\n"
+            "  -E excess      excess bandwidth factor in 0 - 1 (default: 0.075)\n"
+            "  -S freqscale   multiplicator for frequency to amplitude conversion (default: 1.0)\n"
             "  -R filename    Write audio data as raw S16_LE samples\n"
             "                 use filename '-' to write to stdout\n"
             "  -W filename    Write audio data to .WAV file\n"
@@ -398,6 +403,12 @@ int main(int argc, char **argv)
     std::string devtype_str;
     std::vector<std::string> devnames;
     Source *srcsdr = 0;
+    double para_deemphasis    = FmDecoder::default_deemphasis;   // 50 us
+    double para_bandwidth_if  = FmDecoder::default_bandwidth_if; // 100 kHz
+    double para_freq_dev      = FmDecoder::default_freq_dev;     // 75 kHz
+    double para_freqscale     = 1.0;
+    const double default_excess = 215000.0 / (2.0 * FmDecoder::default_bandwidth_if);  // 215 / 200 = 1.075
+    double para_excess_bw     = default_excess;
 
     fprintf(stderr,
             "SoftFM - Software decoder for FM broadcast radio\n");
@@ -413,13 +424,51 @@ int main(int argc, char **argv)
         { "play",       2, NULL, 'P' },
         { "pps",        1, NULL, 'T' },
         { "buffer",     1, NULL, 'b' },
+        { "de-emphasis",1, NULL, 'e' },
+        { "bandwidth",  1, NULL, 'B' },
+        { "freq-deviation", 1, NULL, 'D' },
+        { "excess-bw",  1, NULL, 'E' },
+        { "freqscale",  1, NULL, 'S' },
         { NULL,         0, NULL, 0 } };
 
     int c, longindex;
     while ((c = getopt_long(argc, argv,
-                            "t:c:d:r:MR:W:P::T:b:",
+                            "e:B:D:E:S:t:c:d:r:MR:W:P::T:b:",
                             longopts, &longindex)) >= 0) {
         switch (c) {
+            case 'e':
+                if (!parse_dbl(optarg, para_deemphasis)) {
+                    para_deemphasis    = FmDecoder::default_deemphasis;
+                    fprintf(stderr, "error parsing de-emphasis '%s': set to default %.0f us\n", optarg, para_deemphasis);
+                }
+                break;
+            case 'B':
+                if (!parse_dbl(optarg, para_bandwidth_if)) {
+                    para_bandwidth_if  = FmDecoder::default_bandwidth_if;
+                    fprintf(stderr, "error parsing bandwith '%s': set to default %f kHz\n", optarg, para_bandwidth_if * 2.0);
+                }
+                else
+                    para_bandwidth_if *= 0.5;
+                break;
+            case 'D':
+                if (!parse_dbl(optarg, para_freq_dev)) {
+                    para_freq_dev  = FmDecoder::default_freq_dev;
+                    fprintf(stderr, "error parsing frequency deviation '%s': set to default %f kHz\n", optarg, para_freq_dev);
+                }
+                break;
+            case 'E':
+                if (!parse_dbl(optarg, para_excess_bw)) {
+                    para_excess_bw = default_excess;
+                    fprintf(stderr, "error parsing excess bandwidth '%s': set to default %f kHz\n", optarg, para_excess_bw);
+                }
+                break;
+            case 'S':
+                if (!parse_dbl(optarg, para_freqscale)) {
+                    para_freqscale = 1.0;
+                    fprintf(stderr, "error parsing frequency scale '%s': set to default %f\n", optarg, 1.0);
+                }
+                break;
+
             case 't':
                 devtype_str.assign(optarg);
                 break;
@@ -596,7 +645,7 @@ int main(int argc, char **argv)
     fprintf(stderr, "device tuned for:  %.6f MHz\n", tuner_freq * 1.0e-6);
 
     double ifrate = srcsdr->get_sample_rate();
-    fprintf(stderr, "IF sample rate:    %.0f Hz\n", ifrate);
+    fprintf(stderr, "Input sample rate: %.0f Hz\n", ifrate);
 
     double delta_if = tuner_freq - freq;
     MovingAverage<float> ppm_average(40, 0.0f);
@@ -622,8 +671,11 @@ int main(int argc, char **argv)
     // The baseband signal is empty above 100 kHz, so we can
     // downsample to ~ 200 kS/s without loss of information.
     // This will speed up later processing stages.
-    unsigned int downsample = std::max(1, int(ifrate / 215.0e3));
+    const double required_min_rate = 2.0 * para_bandwidth_if * ( 1.0 + para_excess_bw );
+    const unsigned int downsample = std::max(1, int(ifrate / required_min_rate));
+    const double proc_rate = ifrate / downsample;
     fprintf(stderr, "baseband downsampling factor %u\n", downsample);
+    fprintf(stderr, "processing samplerate (after downsampling) %.0f Hz\n", proc_rate);
 
     // Prevent aliasing at very low output sample rates.
     double bandwidth_pcm = std::min(FmDecoder::default_bandwidth_pcm, 0.45 * pcmrate);
@@ -631,15 +683,16 @@ int main(int argc, char **argv)
     fprintf(stderr, "audio bandwidth:   %.3f kHz\n", bandwidth_pcm * 1.0e-3);
 
     // Prepare decoder.
-    FmDecoder fm(ifrate,                            // sample_rate_if
-                 freq - tuner_freq,                 // tuning_offset
-                 pcmrate,                           // sample_rate_pcm
-                 stereo,                            // stereo
-                 FmDecoder::default_deemphasis,     // deemphasis,
-                 FmDecoder::default_bandwidth_if,   // bandwidth_if
-                 FmDecoder::default_freq_dev,       // freq_dev
-                 bandwidth_pcm,                     // bandwidth_pcm
-                 downsample);                       // downsample
+    FmDecoder fm(ifrate,             // sample_rate_if
+                 freq - tuner_freq,  // tuning_offset
+                 pcmrate,            // sample_rate_pcm
+                 stereo,             // stereo
+                 para_deemphasis,    // deemphasis,
+                 para_bandwidth_if,  // bandwidth_if
+                 para_freq_dev,      // freq_dev
+                 bandwidth_pcm,      // bandwidth_pcm
+                 downsample,         // downsample
+                 para_freqscale );   // freqscale
 
     // If buffering enabled, start background output thread.
     DataBuffer<Sample> output_buffer;
@@ -724,11 +777,11 @@ int main(int argc, char **argv)
 
             if (got_stereo)
             {
-                fprintf(stderr, "\ngot stereo signal (pilot level = %f)\n", fm.get_pilot_level());
+                fprintf(stderr, "\nblk=%6d: got stereo signal (pilot level = %f)\n", block, fm.get_pilot_level());
             }
             else
             {
-                fprintf(stderr, "\nno/lost stereo signal\n");
+                fprintf(stderr, "\nblk=%6d: no/lost stereo signal\n", block);
             }
         }
 
