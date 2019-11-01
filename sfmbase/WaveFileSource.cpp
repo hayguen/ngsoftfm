@@ -114,8 +114,8 @@ bool WaveFileSource::configure( const std::string & filename,
     }
 
     r = waveReadHeader(m_meta.file, &m_meta.srate, &m_meta.freq, &m_meta.bps, &m_meta.nchan,
-        &m_meta.nframes, &m_meta.fmttag );
-    if (r) {
+        &m_meta.nframes, &m_meta.fmttag, 1);
+    if ( r >= 10 ) {
         fprintf(stderr, "error %d parsing wave header\n", r);
         fclose(m_meta.file);
         m_meta.file = nullptr;
