@@ -128,6 +128,7 @@ public:
     static constexpr double default_deemphasis    =     50;
     static constexpr double default_bandwidth_if  = 100000;
     static constexpr double default_freq_dev      =  75000;
+    static constexpr double default_stereo_scale  =  1.17;
     static constexpr double default_bandwidth_pcm =  15000;
     static constexpr double pilot_freq            =  19000;
 
@@ -160,7 +161,8 @@ public:
               double freq_dev=default_freq_dev,
               double bandwidth_pcm=default_bandwidth_pcm,
               unsigned int downsample=1,
-              double freqscale=1.0);
+              double freqscale=1.0,
+              double stereo_scale=default_stereo_scale);
 
     /**
      * Process IQ samples and return audio samples.
@@ -231,6 +233,7 @@ private:
     const int       m_tuning_table_size;
     const int       m_tuning_shift;
     const double    m_freq_dev;
+    const double    m_stereo_scale;
     const unsigned int m_downsample;
     const bool      m_stereo_enabled;
     bool            m_stereo_detected;

@@ -280,7 +280,8 @@ FmDecoder::FmDecoder(double sample_rate_if,
                      double freq_dev,
                      double bandwidth_pcm,
                      unsigned int downsample,
-                     double freqscale)
+                     double freqscale,
+                     double stereo_scale)
 
     // Initialize member fields
     : m_sample_rate_if(sample_rate_if)
@@ -288,6 +289,7 @@ FmDecoder::FmDecoder(double sample_rate_if,
     , m_tuning_table_size(64)
     , m_tuning_shift(lrint(-64.0 * tuning_offset / sample_rate_if))
     , m_freq_dev(freq_dev)
+    , m_stereo_scale(stereo_scale)
     , m_downsample(downsample)
     , m_stereo_enabled(stereo)
     , m_stereo_detected(false)
@@ -424,10 +426,11 @@ void FmDecoder::demod_stereo(const SampleVector& samples_baseband,
     // That's all.
 
     unsigned int n = samples_baseband.size();
+    double stereo_scale = m_stereo_scale;
     assert(n == samples_rawstereo.size());
 
     for (unsigned int i = 0; i < n; i++) {
-        samples_rawstereo[i] *= 1.17 * samples_baseband[i];
+        samples_rawstereo[i] *= stereo_scale * samples_baseband[i];
     }
 }
 

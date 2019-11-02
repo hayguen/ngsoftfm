@@ -62,6 +62,9 @@
 /** Flag is set on SIGINT / SIGTERM. */
 static std::atomic_bool stop_flag(false);
 
+// 215 / 200 -1 = 1.075 -1 = 0.075
+static const double default_excess = (215000.0 / (2.0 * FmDecoder::default_bandwidth_if)) -1.0;
+
 
 /** Simple linear gain adjustment. */
 void adjust_gain(SampleVector& samples, double gain)
@@ -150,11 +153,12 @@ void usage()
             "  -d devidx      Device index, 'list' to show device list (default 0)\n"
             "  -r pcmrate     Audio sample rate in Hz (default 48000 Hz)\n"
             "  -M             Disable stereo decoding\n"
-            "  -e us          de-emphasis in us (default: 50 us)\n"
-            "  -B bandwidth   bandwidth in Hz (default: 200 kHz)\n"
-            "  -D deviation   frequency-deviation in Hz (default: 75 kHz)\n"
-            "  -E excess      excess bandwidth factor in 0 - 1 (default: 0.075)\n"
-            "  -S freqscale   multiplicator for frequency to amplitude conversion (default: 1.0)\n"
+            "  -e us          de-emphasis in us (default: %.1f us)\n"
+            "  -B bandwidth   bandwidth in Hz (default: %.1f kHz)\n"
+            "  -D deviation   frequency-deviation in Hz (default: %.1f kHz)\n"
+            "  -E excess      excess bandwidth factor in 0 - 1 (default: %.3f)\n"
+            "  -s stereoscale multiplicator for stereo channel (default: %.3f)\n"
+            "  -S freqscale   multiplicator for frequency to amplitude conversion (default: %.3f)\n"
             "  -R filename    Write audio data as raw S16_LE samples\n"
             "                 use filename '-' to write to stdout\n"
             "  -W filename    Write audio data to .WAV file\n"
@@ -222,6 +226,12 @@ void usage()
             "  v2gain=<int>   VGA2 gain in dB. 'list' to just get a list of valid values: (default 9)\n"
             "\n"
 #endif
+            , FmDecoder::default_deemphasis
+            , FmDecoder::default_bandwidth_if * 2.0 / 1000.0
+            , FmDecoder::default_freq_dev / 1000.0
+            , default_excess
+            , FmDecoder::default_stereo_scale
+            , 1.0
             );
 }
 
@@ -406,14 +416,15 @@ int main(int argc, char **argv)
     double para_deemphasis    = FmDecoder::default_deemphasis;   // 50 us
     double para_bandwidth_if  = FmDecoder::default_bandwidth_if; // 100 kHz
     double para_freq_dev      = FmDecoder::default_freq_dev;     // 75 kHz
+    double para_stereo_scale  = FmDecoder::default_stereo_scale; // 1.17
     double para_freqscale     = 1.0;
-    const double default_excess = 215000.0 / (2.0 * FmDecoder::default_bandwidth_if);  // 215 / 200 = 1.075
     double para_excess_bw     = default_excess;
 
     fprintf(stderr,
             "SoftFM - Software decoder for FM broadcast radio\n");
 
     const struct option longopts[] = {
+        { "help",       0, NULL, 'h' },
         { "devtype",    2, NULL, 't' },
         { "config",     2, NULL, 'c' },
         { "dev",        1, NULL, 'd' },
@@ -427,15 +438,19 @@ int main(int argc, char **argv)
         { "de-emphasis",1, NULL, 'e' },
         { "bandwidth",  1, NULL, 'B' },
         { "freq-deviation", 1, NULL, 'D' },
+        { "stereoscale", 1, NULL, 's' },
         { "excess-bw",  1, NULL, 'E' },
         { "freqscale",  1, NULL, 'S' },
         { NULL,         0, NULL, 0 } };
 
     int c, longindex;
     while ((c = getopt_long(argc, argv,
-                            "e:B:D:E:S:t:c:d:r:MR:W:P::T:b:",
+                            "he:B:D:s:E:S:t:c:d:r:MR:W:P::T:b:",
                             longopts, &longindex)) >= 0) {
         switch (c) {
+            case 'h':
+                usage();
+                exit(0);
             case 'e':
                 if (!parse_dbl(optarg, para_deemphasis)) {
                     para_deemphasis    = FmDecoder::default_deemphasis;
@@ -454,6 +469,12 @@ int main(int argc, char **argv)
                 if (!parse_dbl(optarg, para_freq_dev)) {
                     para_freq_dev  = FmDecoder::default_freq_dev;
                     fprintf(stderr, "error parsing frequency deviation '%s': set to default %f kHz\n", optarg, para_freq_dev);
+                }
+                break;
+            case 's':
+                if (!parse_dbl(optarg, para_stereo_scale)) {
+                    para_stereo_scale = FmDecoder::default_stereo_scale;
+                    fprintf(stderr, "error parsing stereo scale '%s': set to default %f\n", optarg, para_stereo_scale);
                 }
                 break;
             case 'E':
