@@ -37,7 +37,7 @@ public:
      * max_freq_dev :: Full scale frequency deviation relative to the
      *                 full sample frequency.
      */
-    PhaseDiscriminator(double max_freq_dev, double freqscale=1.0);
+    PhaseDiscriminator(double freq_dev, double samplerate, double freqscale=1.0, bool createDevHistogram=false);
 
     /**
      * Process samples.
@@ -46,10 +46,27 @@ public:
      */
     void process(const IQSampleVector& samples_in, SampleVector& samples_out);
 
+    const unsigned long * getDevHistoNeg() const { return &m_histo_n[0]; }
+    const unsigned long * getDevHistoPos() const { return &m_histo_p[0]; }
+    const unsigned long * getDevHistoCtr() const { return &m_histo_c[0]; }
+
 private:
-    const Sample m_freq_scale_factor;
-    IQSample     m_last1_sample;
-    IQSample     m_last2_sample;
+    void initDevHisto();
+
+    const double   m_freq_dev;
+    const double   m_samplerate;
+    const Sample   m_freq_scale_factor;
+    const Sample   m_dev_scale_factor;
+    const bool     m_createDevHistogram;
+    const unsigned m_histoApplyCount;
+    IQSample       m_last1_sample;
+    IQSample       m_last2_sample;
+    double         m_minDev;
+    double         m_maxDev;
+    unsigned long  m_histo_n[ 151 ];
+    unsigned long  m_histo_p[ 151 ];
+    unsigned long  m_histo_c[ 151 ];
+    unsigned       m_sampleCounter;
 };
 
 
@@ -162,7 +179,8 @@ public:
               double bandwidth_pcm=default_bandwidth_pcm,
               unsigned int downsample=1,
               double freqscale=1.0,
-              double stereo_scale=default_stereo_scale);
+              double stereo_scale=default_stereo_scale,
+              bool   createDevHistogram=false);
 
     /**
      * Process IQ samples and return audio samples.
@@ -212,6 +230,11 @@ public:
     {
         return m_pilotpll.get_pps_events();
     }
+
+    // deliver histograms [ 0 .. 150 ] - x axis in kHz
+    const unsigned long * getDevHistoNeg() const { return m_phasedisc.getDevHistoNeg(); }
+    const unsigned long * getDevHistoPos() const { return m_phasedisc.getDevHistoPos(); }
+    const unsigned long * getDevHistoCtr() const { return m_phasedisc.getDevHistoCtr(); }
 
 private:
     /** Demodulate stereo L-R signal. */

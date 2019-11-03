@@ -151,6 +151,7 @@ void usage()
             "  -c config      Comma separated key=value configuration pairs or just key for switches\n"
             "                 See below for valid values per device type\n"
             "  -d devidx      Device index, 'list' to show device list (default 0)\n"
+            "  -q             Switch to quite output\n"
             "  -r pcmrate     Audio sample rate in Hz (default 48000 Hz)\n"
             "  -M             Disable stereo decoding\n"
             "  -e us          de-emphasis in us (default: %.1f us)\n"
@@ -159,6 +160,7 @@ void usage()
             "  -E excess      excess bandwidth factor in 0 - 1 (default: %.3f)\n"
             "  -s stereoscale multiplicator for stereo channel (default: %.3f)\n"
             "  -S freqscale   multiplicator for frequency to amplitude conversion (default: %.3f)\n"
+            "  -H             Enable deviation histogram\n"
             "  -R filename    Write audio data as raw S16_LE samples\n"
             "                 use filename '-' to write to stdout\n"
             "  -W filename    Write audio data to .WAV file\n"
@@ -397,6 +399,7 @@ int main(int argc, char **argv)
     int     devidx  = 0;
     int     pcmrate = 48000;
     bool    stereo  = true;
+    bool    quietOut = false;
     enum OutputMode { MODE_RAW, MODE_WAV, MODE_ALSA };
 #ifdef USE_ALSA
     OutputMode outmode = MODE_ALSA;
@@ -419,6 +422,7 @@ int main(int argc, char **argv)
     double para_stereo_scale  = FmDecoder::default_stereo_scale; // 1.17
     double para_freqscale     = 1.0;
     double para_excess_bw     = default_excess;
+    bool   para_dev_histo     = false;
 
     fprintf(stderr,
             "SoftFM - Software decoder for FM broadcast radio\n");
@@ -441,16 +445,21 @@ int main(int argc, char **argv)
         { "stereoscale", 1, NULL, 's' },
         { "excess-bw",  1, NULL, 'E' },
         { "freqscale",  1, NULL, 'S' },
+        { "devhistogram", 0, NULL, 'H' },
+        { "quiet",      0, NULL, 'q' },
         { NULL,         0, NULL, 0 } };
 
     int c, longindex;
     while ((c = getopt_long(argc, argv,
-                            "he:B:D:s:E:S:t:c:d:r:MR:W:P::T:b:",
+                            "hqe:B:D:s:E:S:Ht:c:d:r:MR:W:P::T:b:",
                             longopts, &longindex)) >= 0) {
         switch (c) {
             case 'h':
                 usage();
                 exit(0);
+            case 'q':
+                quietOut = true;
+                break;
             case 'e':
                 if (!parse_dbl(optarg, para_deemphasis)) {
                     para_deemphasis    = FmDecoder::default_deemphasis;
@@ -488,6 +497,9 @@ int main(int argc, char **argv)
                     para_freqscale = 1.0;
                     fprintf(stderr, "error parsing frequency scale '%s': set to default %f\n", optarg, 1.0);
                 }
+                break;
+            case 'H':
+                para_dev_histo = true;
                 break;
 
             case 't':
@@ -713,7 +725,9 @@ int main(int argc, char **argv)
                  para_freq_dev,      // freq_dev
                  bandwidth_pcm,      // bandwidth_pcm
                  downsample,         // downsample
-                 para_freqscale );   // freqscale
+                 para_freqscale,     // freqscale
+                 para_stereo_scale,  // stereo_scale
+                 para_dev_histo );
 
     // If buffering enabled, start background output thread.
     DataBuffer<Sample> output_buffer;
@@ -771,7 +785,9 @@ int main(int argc, char **argv)
         ppm_average.feed(((fm.get_tuning_offset() + delta_if) / tuner_freq) * -1.0e6); // the minus factor is to show the ppm correction to make and not the one made
 
         // Show statistics.
-        fprintf(stderr,
+        if ( !quietOut )
+        {
+            fprintf(stderr,
                 "\rblk=%6d  freq=%10.6fMHz  ppm=%+6.2f  IF=%+5.1fdB  BB=%+5.1fdB  audio=%+5.1fdB ",
                 block,
                 (tuner_freq + fm.get_tuning_offset()) * 1.0e-6,
@@ -781,14 +797,15 @@ int main(int argc, char **argv)
                 20*log10(fm.get_baseband_level()) + 3.01,
                 20*log10(audio_level) + 3.01);
 
-        if (outputbuf_samples > 0)
-        {
-            unsigned int nchannel = stereo ? 2 : 1;
-            std::size_t buflen = output_buffer.queued_samples();
-            fprintf(stderr, " buf=%.1fs ", buflen / nchannel / double(pcmrate));
-        }
+            if ( outputbuf_samples > 0)
+            {
+                unsigned int nchannel = stereo ? 2 : 1;
+                std::size_t buflen = output_buffer.queued_samples();
+                fprintf(stderr, " buf=%.1fs ", buflen / nchannel / double(pcmrate));
+            }
 
-        fflush(stderr);
+            fflush(stderr);
+        }
 
         // Show stereo status.
         const int new_stereo = fm.stereo_detected() ? 1 : 0;
@@ -844,11 +861,36 @@ int main(int argc, char **argv)
     // Join background threads.
     //source_thread.join();
     up_srcsdr->stop();
-    
+
     if (outputbuf_samples > 0)
     {
         output_buffer.push_end();
         output_thread.join();
+    }
+
+    if ( para_dev_histo )
+    {
+        const unsigned long * hn = fm.getDevHistoNeg();
+        const unsigned long * hp = fm.getDevHistoPos();
+        const unsigned long * hc = fm.getDevHistoCtr();
+        unsigned long sum_neg = 0UL, sum_pos = 0UL, sum_ctr = 0UL;
+        unsigned long thr_neg = 0UL, thr_pos = 0UL, thr_ctr = 0UL;
+        fprintf(stderr, "dev/kHz\tnegative\tpositive\tcenter\n");
+        for ( int k = 0; k <= 75; ++k) {
+            fprintf(stderr, "%3d\t%5lu\t%5lu\t%5lu\n", k, hn[k], hp[k], hc[k]);
+            sum_neg += hn[k];
+            sum_pos += hp[k];
+            sum_ctr += hc[k];
+        }
+        for ( int k = 76; k <= 150; ++k) {
+            fprintf(stderr, "%3d\t%5lu\t%5lu\t%5lu\n", k, hn[k], hp[k], hc[k]);
+            sum_neg += hn[k];    thr_neg += hn[k];
+            sum_pos += hp[k];    thr_pos += hp[k];
+            sum_ctr += hc[k];    thr_ctr += hc[k];
+        }
+        fprintf(stderr, "sum\t%5lu\t%5lu\t%5lu\n", sum_neg, sum_pos, sum_ctr);
+        fprintf(stderr, ">75\t%5lu\t%5lu\t%5lu\n", thr_neg, thr_pos, thr_ctr);
+        fprintf(stderr, ">75%%\t%5.1f\t%5.1f\t%5.1f\n", thr_neg * 100.0 / sum_neg, thr_pos * 100.0 / sum_pos, thr_ctr * 100.0 / sum_ctr);
     }
 
     // No cleanup needed; everything handled by destructors

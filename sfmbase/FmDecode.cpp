@@ -72,27 +72,94 @@ static IQSample::value_type rms_level_approx(const IQSampleVector& samples)
 /* ****************  class PhaseDiscriminator  **************** */
 
 // Construct phase discriminator.
-PhaseDiscriminator::PhaseDiscriminator(double max_freq_dev, double freqscale)
-    : m_freq_scale_factor(freqscale / (max_freq_dev * 2.0 * M_PI))
-{ }
+PhaseDiscriminator::PhaseDiscriminator(double freq_dev, double samplerate, double freqscale, bool createDevHistogram)
+    : m_freq_dev( freq_dev )
+    , m_samplerate( samplerate )
+    , m_freq_scale_factor( freqscale / ( (freq_dev/samplerate) * 2.0 * M_PI) )
+    , m_dev_scale_factor( 0.001 * samplerate / (2.0 * M_PI) )
+    , m_createDevHistogram( createDevHistogram )
+    , m_histoApplyCount( (unsigned)(samplerate / 20) )  // update in 50 ms intervals
+{
+    m_last2_sample = m_last1_sample = 1.0;
+    initDevHisto();
+    if ( m_createDevHistogram )
+        fprintf(stderr, "create deviation histogram\n");
+}
+
+
+void PhaseDiscriminator::initDevHisto()
+{
+    for (int k = 0; k <= 150; ++k)
+    {
+        m_histo_n[k] = 0;
+        m_histo_p[k] = 0;
+        m_histo_c[k] = 0;
+    }
+        
+    m_minDev = m_maxDev = 0.0;
+    m_sampleCounter = 0;
+}
+
 
 
 // Process samples.
 void PhaseDiscriminator::process(const IQSampleVector& samples_in,
                                  SampleVector& samples_out)
 {
-    unsigned int n = samples_in.size();
+    const double freq_scale_factor = m_freq_scale_factor;
     IQSample s0 = m_last1_sample;
-
+    
+    unsigned int n = samples_in.size();
     samples_out.resize(n);
 
-    for (unsigned int i = 0; i < n; i++) {
-        IQSample s1(samples_in[i]);
-        IQSample d(conj(s0) * s1);
-        //Sample w = atan2(d.imag(), d.real());
-        Sample w = fastatan2(d.imag(), d.real()); // fast approximation of atan2
-        samples_out[i] = w * m_freq_scale_factor;
-        s0 = s1;
+    if ( m_createDevHistogram )
+    {
+        const double dev_scale_factor = m_dev_scale_factor;
+        double minDev = m_minDev;
+        double maxDev = m_maxDev;
+        unsigned long  * histo_n = &m_histo_n[0];
+        unsigned long  * histo_p = &m_histo_p[0];
+        unsigned long  * histo_c = &m_histo_c[0];
+        const unsigned histoApplyCount = m_histoApplyCount;
+        unsigned       sampleCounter = m_sampleCounter;
+
+        for (unsigned int i = 0; i < n; i++)
+        {
+            IQSample s1(samples_in[i]);
+            IQSample d(conj(s0) * s1);
+            //Sample w = atan2(d.imag(), d.real());
+            Sample w = fastatan2(d.imag(), d.real()); // fast approximation of atan2
+            samples_out[i] = w * freq_scale_factor;
+            s0 = s1;
+
+            double dev = w * dev_scale_factor;
+            if      ( minDev > dev )    minDev = dev;
+            else if ( maxDev < dev )    maxDev = dev;
+            if ( (++sampleCounter) >= histoApplyCount )
+            {
+                int k;
+                //fprintf(stderr, "\n%f\t%f\n", minDev, maxDev);
+                k = (int)( -minDev + 0.5 );    if ( k >= 0 && k <= 150 )  ++histo_n[k];
+                k = (int)(  maxDev + 0.5 );    if ( k >= 0 && k <= 150 )  ++histo_p[k];
+                k = (int)( (maxDev - minDev) * 0.5 + 0.5 );    if ( k >= 0 && k <= 150 )  ++histo_c[k];
+                minDev = maxDev = 0.0;
+                sampleCounter = 0;
+            }
+        }
+        m_minDev = minDev;
+        m_maxDev = maxDev;
+        m_sampleCounter = sampleCounter;
+    }
+    else
+    {
+        for (unsigned int i = 0; i < n; i++) {
+            IQSample s1(samples_in[i]);
+            IQSample d(conj(s0) * s1);
+            //Sample w = atan2(d.imag(), d.real());
+            Sample w = fastatan2(d.imag(), d.real()); // fast approximation of atan2
+            samples_out[i] = w * freq_scale_factor;
+            s0 = s1;
+        }
     }
 
     m_last2_sample = m_last1_sample;
@@ -281,7 +348,8 @@ FmDecoder::FmDecoder(double sample_rate_if,
                      double bandwidth_pcm,
                      unsigned int downsample,
                      double freqscale,
-                     double stereo_scale)
+                     double stereo_scale,
+                     bool   createDevHistogram)
 
     // Initialize member fields
     : m_sample_rate_if(sample_rate_if)
@@ -304,7 +372,7 @@ FmDecoder::FmDecoder(double sample_rate_if,
     , m_iffilter(10, bandwidth_if / sample_rate_if)
 
     // Construct PhaseDiscriminator
-    , m_phasedisc(freq_dev / sample_rate_if, freqscale)
+    , m_phasedisc(freq_dev, sample_rate_if, freqscale, createDevHistogram)
 
     // Construct DownsampleFilter for baseband
     , m_resample_baseband(8 * downsample, 0.4 / downsample, downsample, true)
