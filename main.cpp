@@ -809,6 +809,8 @@ int main(int argc, char **argv)
     int got_stereo = -1;
 
     double block_time = get_time();
+    unsigned long numStereoBlocks = 0;
+    unsigned long numMonoBlocks = 0;
 
     // Main loop.
     for (unsigned int block = 0; !stop_flag.load(); block++)
@@ -885,6 +887,11 @@ int main(int argc, char **argv)
             }
         }
 
+        if ( new_stereo )
+            ++numStereoBlocks;
+        else
+            ++numMonoBlocks;
+
         // Write PPS markers.
         if (ppsfile != NULL)
         {
@@ -928,6 +935,14 @@ int main(int argc, char **argv)
     {
         output_buffer.push_end();
         output_thread.join();
+    }
+
+    if ( numStereoBlocks + numMonoBlocks >= 10 )
+    {
+        double stereo_ratio = numStereoBlocks * 100.0 / ( numStereoBlocks + numMonoBlocks );
+        fprintf(stderr, "num_stereo_blocks\t%lu\n", numStereoBlocks);
+        fprintf(stderr, "num_mono_blocks\t%lu\n", numMonoBlocks);
+        fprintf(stderr, "stereo(pilot_locked)ratio/%%\t%.2f\n", stereo_ratio);
     }
 
     if ( para_dev_histo )
