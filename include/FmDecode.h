@@ -37,7 +37,8 @@ public:
      * max_freq_dev :: Full scale frequency deviation relative to the
      *                 full sample frequency.
      */
-    PhaseDiscriminator(double freq_dev, double samplerate, double freqscale=1.0, bool createDevHistogram=false);
+    PhaseDiscriminator(double freq_dev, double samplerate, double freqscale=1.0,
+                       bool createDevHistogram=false, bool precise_atan2=false);
 
     /**
      * Process samples.
@@ -58,6 +59,7 @@ private:
     const Sample   m_freq_scale_factor;
     const Sample   m_dev_scale_factor;
     const bool     m_createDevHistogram;
+    const bool     m_precise_atan2;
     const unsigned m_histoApplyCount;
     IQSample       m_last1_sample;
     IQSample       m_last2_sample;
@@ -180,7 +182,8 @@ public:
               unsigned int downsample=1,
               double freqscale=1.0,
               double stereo_scale=default_stereo_scale,
-              bool   createDevHistogram=false);
+              bool   createDevHistogram=false,
+              bool   precise_atan2=false);
 
     /**
      * Process IQ samples and return audio samples.

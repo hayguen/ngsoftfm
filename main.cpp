@@ -394,6 +394,62 @@ static bool get_device(std::vector<std::string> &devnames, std::string& devtype,
     return true;
 }
 
+
+double center_of_gravity( const unsigned long * h )
+{
+    double sa = 0.0;
+    double sb = 0.0;
+
+    for ( int k = 0; k <= 150; ++k) {
+        sa += h[k];
+        sb += (k+1) * h[k];
+    }
+
+    double cog = (sa > 0) ? (sb / sa) : 0.0;
+    return ( cog - 1.0);  // compensate the "k+1"
+}
+
+void print_quantile_max( double q
+    , const unsigned long * hn
+    , const unsigned long * hp
+    , const unsigned long * hc
+    , unsigned long sum_neg
+    , unsigned long sum_pos
+    , unsigned long sum_ctr
+    )
+{
+    const unsigned long thr_neg = (unsigned long)(sum_neg * q / 100.0);
+    const unsigned long thr_pos = (unsigned long)(sum_pos * q / 100.0);
+    const unsigned long thr_ctr = (unsigned long)(sum_ctr * q / 100.0);
+    //fprintf(stderr, "sum_%.1f\t%lu\t%lu\t%lu\n", q, sum_neg, sum_pos, sum_ctr);
+    //fprintf(stderr, "thr_%.1f\t%lu\t%lu\t%lu\n", q, thr_neg, thr_pos, thr_ctr);
+    unsigned long s_neg = 0UL, s_pos = 0UL, s_ctr = 0UL;
+    int max_neg_idx = 150, max_pos_idx = 150, max_ctr_idx = 150;
+    for ( int k = 0; k <= 150; ++k) {
+        s_neg += hn[k];
+        if ( s_neg >= thr_neg ) {
+            max_neg_idx = k;
+            break;
+        }
+    }
+    for ( int k = 0; k <= 150; ++k) {
+        s_pos += hp[k];
+        if ( s_pos >= thr_pos ) {
+            max_pos_idx = k;
+            break;
+        }
+    }
+    for ( int k = 0; k <= 150; ++k) {
+        s_ctr += hc[k];
+        if ( s_ctr >= thr_ctr ) {
+            max_ctr_idx = k;
+            break;
+        }
+    }
+    fprintf(stderr, "maxdev_q_%.1f/kHz\t%5d\t%5d\t%5d\n", q, -max_neg_idx, max_pos_idx, max_ctr_idx);
+}
+
+
 int main(int argc, char **argv)
 {
     int     devidx  = 0;
@@ -423,6 +479,7 @@ int main(int argc, char **argv)
     double para_freqscale     = 1.0;
     double para_excess_bw     = default_excess;
     bool   para_dev_histo     = false;
+    bool   para_precise_atan2 = false;
 
     fprintf(stderr,
             "SoftFM - Software decoder for FM broadcast radio\n");
@@ -446,12 +503,13 @@ int main(int argc, char **argv)
         { "excess-bw",  1, NULL, 'E' },
         { "freqscale",  1, NULL, 'S' },
         { "devhistogram", 0, NULL, 'H' },
+        { "preciseatan2", 0, NULL, 'p' },
         { "quiet",      0, NULL, 'q' },
         { NULL,         0, NULL, 0 } };
 
     int c, longindex;
     while ((c = getopt_long(argc, argv,
-                            "hqe:B:D:s:E:S:Ht:c:d:r:MR:W:P::T:b:",
+                            "hqe:B:D:s:E:S:Hpt:c:d:r:MR:W:P::T:b:",
                             longopts, &longindex)) >= 0) {
         switch (c) {
             case 'h':
@@ -501,7 +559,9 @@ int main(int argc, char **argv)
             case 'H':
                 para_dev_histo = true;
                 break;
-
+            case 'p':
+                para_precise_atan2 = true;
+                break;
             case 't':
                 devtype_str.assign(optarg);
                 break;
@@ -727,7 +787,8 @@ int main(int argc, char **argv)
                  downsample,         // downsample
                  para_freqscale,     // freqscale
                  para_stereo_scale,  // stereo_scale
-                 para_dev_histo );
+                 para_dev_histo,
+                 para_precise_atan2 ); // use atan2() not a faste but inprecise implementation
 
     // If buffering enabled, start background output thread.
     DataBuffer<Sample> output_buffer;
@@ -782,7 +843,8 @@ int main(int argc, char **argv)
         // Set nominal audio volume.
         adjust_gain(audiosamples, 0.5);
 
-        ppm_average.feed(((fm.get_tuning_offset() + delta_if) / tuner_freq) * -1.0e6); // the minus factor is to show the ppm correction to make and not the one made
+        // the minus factor is to show the ppm correction to make and not the one made
+        ppm_average.feed(((fm.get_tuning_offset() + delta_if) / tuner_freq) * -1.0e6);
 
         // Show statistics.
         if ( !quietOut )
@@ -873,24 +935,40 @@ int main(int argc, char **argv)
         const unsigned long * hn = fm.getDevHistoNeg();
         const unsigned long * hp = fm.getDevHistoPos();
         const unsigned long * hc = fm.getDevHistoCtr();
+        const double cog_neg = center_of_gravity(hn);
+        const double cog_pos = center_of_gravity(hp);
+        const double cog_ctr = center_of_gravity(hc);
         unsigned long sum_neg = 0UL, sum_pos = 0UL, sum_ctr = 0UL;
         unsigned long thr_neg = 0UL, thr_pos = 0UL, thr_ctr = 0UL;
+        int max_neg_idx = 0, max_pos_idx = 0, max_ctr_idx = 0;
         fprintf(stderr, "dev/kHz\tnegative\tpositive\tcenter\n");
-        for ( int k = 0; k <= 75; ++k) {
+        for ( int k = 0; k <= 150; ++k)
+        {
             fprintf(stderr, "%3d\t%5lu\t%5lu\t%5lu\n", k, hn[k], hp[k], hc[k]);
             sum_neg += hn[k];
             sum_pos += hp[k];
             sum_ctr += hc[k];
-        }
-        for ( int k = 76; k <= 150; ++k) {
-            fprintf(stderr, "%3d\t%5lu\t%5lu\t%5lu\n", k, hn[k], hp[k], hc[k]);
-            sum_neg += hn[k];    thr_neg += hn[k];
-            sum_pos += hp[k];    thr_pos += hp[k];
-            sum_ctr += hc[k];    thr_ctr += hc[k];
+            if ( hn[k] > hn[max_neg_idx] )    max_neg_idx = k;
+            if ( hp[k] > hp[max_pos_idx] )    max_pos_idx = k;
+            if ( hc[k] > hc[max_ctr_idx] )    max_ctr_idx = k;
+            if ( k > 75 )
+            {
+                thr_neg += hn[k];
+                thr_pos += hp[k];
+                thr_ctr += hc[k];
+            }
         }
         fprintf(stderr, "sum\t%5lu\t%5lu\t%5lu\n", sum_neg, sum_pos, sum_ctr);
         fprintf(stderr, ">75\t%5lu\t%5lu\t%5lu\n", thr_neg, thr_pos, thr_ctr);
         fprintf(stderr, ">75%%\t%5.1f\t%5.1f\t%5.1f\n", thr_neg * 100.0 / sum_neg, thr_pos * 100.0 / sum_pos, thr_ctr * 100.0 / sum_ctr);
+        fprintf(stderr, "max(histo)/kHz\t%5d\t%5d\t%5d\n", -max_neg_idx, max_pos_idx, max_ctr_idx);
+        fprintf(stderr, "cog/kHz\t%.3f\t%.3f\t%.3f\n", -1.0 * cog_neg, cog_pos, cog_ctr);
+
+        print_quantile_max( 95.0,  hn, hp, hc,  sum_neg, sum_pos, sum_ctr );
+        print_quantile_max( 98.0,  hn, hp, hc,  sum_neg, sum_pos, sum_ctr );
+        print_quantile_max( 99.0,  hn, hp, hc,  sum_neg, sum_pos, sum_ctr );
+        print_quantile_max( 99.5,  hn, hp, hc,  sum_neg, sum_pos, sum_ctr );
+        print_quantile_max( 99.9,  hn, hp, hc,  sum_neg, sum_pos, sum_ctr );
     }
 
     // No cleanup needed; everything handled by destructors

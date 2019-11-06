@@ -72,12 +72,14 @@ static IQSample::value_type rms_level_approx(const IQSampleVector& samples)
 /* ****************  class PhaseDiscriminator  **************** */
 
 // Construct phase discriminator.
-PhaseDiscriminator::PhaseDiscriminator(double freq_dev, double samplerate, double freqscale, bool createDevHistogram)
+PhaseDiscriminator::PhaseDiscriminator(double freq_dev, double samplerate, double freqscale,
+                                       bool createDevHistogram, bool precise_atan2)
     : m_freq_dev( freq_dev )
     , m_samplerate( samplerate )
     , m_freq_scale_factor( freqscale / ( (freq_dev/samplerate) * 2.0 * M_PI) )
     , m_dev_scale_factor( 0.001 * samplerate / (2.0 * M_PI) )
     , m_createDevHistogram( createDevHistogram )
+    , m_precise_atan2( precise_atan2 )
     , m_histoApplyCount( (unsigned)(samplerate / 20) )  // update in 50 ms intervals
 {
     m_last2_sample = m_last1_sample = 1.0;
@@ -122,13 +124,13 @@ void PhaseDiscriminator::process(const IQSampleVector& samples_in,
         unsigned long  * histo_c = &m_histo_c[0];
         const unsigned histoApplyCount = m_histoApplyCount;
         unsigned       sampleCounter = m_sampleCounter;
+        const bool     precise_atan2 = m_precise_atan2;
 
         for (unsigned int i = 0; i < n; i++)
         {
             IQSample s1(samples_in[i]);
             IQSample d(conj(s0) * s1);
-            //Sample w = atan2(d.imag(), d.real());
-            Sample w = fastatan2(d.imag(), d.real()); // fast approximation of atan2
+            Sample w = precise_atan2 ? atan2(d.imag(), d.real()) : fastatan2(d.imag(), d.real()); // fast approximation of atan2 ?
             samples_out[i] = w * freq_scale_factor;
             s0 = s1;
 
@@ -152,11 +154,11 @@ void PhaseDiscriminator::process(const IQSampleVector& samples_in,
     }
     else
     {
+        const bool precise_atan2 = m_precise_atan2;
         for (unsigned int i = 0; i < n; i++) {
             IQSample s1(samples_in[i]);
             IQSample d(conj(s0) * s1);
-            //Sample w = atan2(d.imag(), d.real());
-            Sample w = fastatan2(d.imag(), d.real()); // fast approximation of atan2
+            Sample w = precise_atan2 ? atan2(d.imag(), d.real()) : fastatan2(d.imag(), d.real()); // fast approximation of atan2 ?
             samples_out[i] = w * freq_scale_factor;
             s0 = s1;
         }
@@ -349,7 +351,8 @@ FmDecoder::FmDecoder(double sample_rate_if,
                      unsigned int downsample,
                      double freqscale,
                      double stereo_scale,
-                     bool   createDevHistogram)
+                     bool   createDevHistogram,
+                     bool   precise_atan2)
 
     // Initialize member fields
     : m_sample_rate_if(sample_rate_if)
@@ -372,7 +375,7 @@ FmDecoder::FmDecoder(double sample_rate_if,
     , m_iffilter(10, bandwidth_if / sample_rate_if)
 
     // Construct PhaseDiscriminator
-    , m_phasedisc(freq_dev, sample_rate_if, freqscale, createDevHistogram)
+    , m_phasedisc(freq_dev, sample_rate_if, freqscale, createDevHistogram, precise_atan2)
 
     // Construct DownsampleFilter for baseband
     , m_resample_baseband(8 * downsample, 0.4 / downsample, downsample, true)
