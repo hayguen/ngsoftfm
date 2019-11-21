@@ -130,14 +130,18 @@ bool WaveFileSource::configure( const std::string & filename,
     }
 
     if ( m_meta.fmttag == 0x0001 && m_meta.bps == 16 ) {
-        m_meta.inputFmt = 0;
+        m_meta.inputFmt = 0;	/* PCM16 */
     }
     else if ( m_meta.fmttag == 0x0003 && m_meta.bps == 32 ) {
-        m_meta.inputFmt = 1;
+        m_meta.inputFmt = 1;	/* FLOAT32 */
+    }
+    else if ( m_meta.fmttag == 0x0001 && m_meta.bps == 24 ) {
+        m_meta.inputFmt = 2;	/* PCM24 */
     }
     else
     {
-        fprintf(stderr, "error: unsupported input format with %d bits. only 'PCM16' and 'FLOAT32' supported.\n", m_meta.bps);
+        fprintf(stderr, "error: unsupported input format tag 0x%04X with %d bits. only 'PCM16' and 'FLOAT32' supported.\n"
+        , (unsigned)m_meta.fmttag, m_meta.bps);
         fclose(m_meta.file);
         m_meta.file = nullptr;
         return false;
@@ -272,6 +276,20 @@ bool WaveFileSource::get_samples(IQSampleVector *samples)
         {
             pOut[k] = IQSample( IQSample::value_type( ai[i] ),
                                 IQSample::value_type( ai[i+1] ) );
+        }
+    }
+    else if ( m_meta.inputFmt == 2 ) {
+        // input is PCM24
+        const uint8_t *au = (const uint8_t*)pvInp;
+        const IQSample::value_type scale = IQSample::value_type(1.0) / IQSample::value_type(2147483648.0);
+        int i = 0;
+        for ( size_t k = 0; k < numRead; ++k, i+=6 )
+        {
+            // assume LITTLE ENDIAN!!!
+            int32_t valLeft  = ( uint32_t(au[i+2]) << 24 ) | ( uint32_t(au[i+1]) << 16 ) | ( uint32_t(au[i+0]) << 8 );
+            int32_t valRight = ( uint32_t(au[i+5]) << 24 ) | ( uint32_t(au[i+4]) << 16 ) | ( uint32_t(au[i+3]) << 8 );
+            pOut[k] = IQSample( IQSample::value_type( valLeft ) * scale,
+                                IQSample::value_type( valRight ) * scale );
         }
     }
 
